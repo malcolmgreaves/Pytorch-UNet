@@ -75,9 +75,6 @@ def train_net(
                 imgs = imgs.to(device=device, dtype=torch.float32)
 
                 imgs_pred = net(imgs)
-                import ipdb
-
-                ipdb.set_trace()
                 loss = criterion(imgs_pred, imgs)
                 epoch_loss += loss.item()
                 writer.add_scalar("Loss/train", loss.item(), global_step)
