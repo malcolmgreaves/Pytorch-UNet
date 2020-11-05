@@ -3,6 +3,8 @@ runs*
 train_masks*
 *.pyc
 data/
+data_carvana
+data_subtask
 __pycache__/
 checkpoints/
 *.pth
