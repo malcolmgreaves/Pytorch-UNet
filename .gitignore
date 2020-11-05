@@ -5,6 +5,7 @@ train_masks*
 data/
 data_carvana
 data_subtask
+data.tar.gz
 __pycache__/
 checkpoints/
 *.pth

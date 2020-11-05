@@ -57,20 +57,22 @@ def train_net(
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=2)
     criterion = nn.MSELoss()
 
+    total_loss = 0
     for epoch in range(epochs):
         net.train()
-
-        epoch_loss = 0
+        epoch_loss = 0.0
         with tqdm(
             total=n_train, desc=f"Epoch {epoch + 1}/{epochs}", unit="img"
         ) as pbar:
-            for batch in train_loader:
+            count = 0
+            for i, batch in enumerate(train_loader):
                 imgs = batch["image"]
                 assert imgs.shape[1] == net.n_channels, (
                     f"Network has been defined with {net.n_channels} input channels, "
                     f"but loaded images have {imgs.shape[1]} channels. "
                     "Please check that the images are loaded correctly."
                 )
+                count = min(n_train, count + batch_size)
 
                 imgs = imgs.to(device=device, dtype=torch.float32)
 
@@ -79,7 +81,9 @@ def train_net(
                 epoch_loss += loss.item()
                 writer.add_scalar("Loss/train", loss.item(), global_step)
 
-                pbar.set_postfix(**{"loss (batch)": loss.item()})
+                pbar.set_postfix(
+                    **{"loss (batch)": loss.item(), "loss (epoch)": epoch_loss / count}
+                )
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -99,6 +103,8 @@ def train_net(
             fname = f"{dir_checkpoint}CP_epoch{epoch + 1}.pth"
             torch.save(net.state_dict(), fname)
             logging.info(f"Checkpoint {epoch + 1} saved as {fname} !")
+        logging.info(f"Epoch {epoch+1} has average loss of {epoch_loss / n_train} (sum: {epoch_loss})")
+        scheduler.step(epoch_loss)
 
     writer.close()
 
