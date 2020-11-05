@@ -1,3 +1,4 @@
+train_masks*
 *.pyc
 data/
 __pycache__/
