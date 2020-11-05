@@ -6,7 +6,7 @@ from .unet_parts import *
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=True):
+    def __init__(self, n_channels, n_classes, bilinear=True) -> None:
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -39,8 +39,8 @@ class UNet(nn.Module):
 
 
 class UNetReconstruct(nn.Module):
-    def __init__(self, n_channels, bilinear=True):
-        super(UNet, self).__init__()
+    def __init__(self, n_channels, bilinear=True) -> None:
+        super(UNetReconstruct, self).__init__()
         self.n_channels = n_channels
         self.bilinear = bilinear
         factor = 2 if bilinear else 1
@@ -66,5 +66,5 @@ class UNetReconstruct(nn.Module):
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
-        logits = self.outc(x)
-        return logits
+        img = self.outc(x)
+        return img

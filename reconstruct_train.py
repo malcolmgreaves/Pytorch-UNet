@@ -54,9 +54,7 @@ def train_net(
 
     # optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
     optimizer = optim.AdamW(net.parameters(), lr=lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min" if net.n_classes > 1 else "max", patience=2
-    )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=2)
     criterion = nn.MSELoss()
 
     for epoch in range(epochs):
@@ -77,6 +75,9 @@ def train_net(
                 imgs = imgs.to(device=device, dtype=torch.float32)
 
                 imgs_pred = net(imgs)
+                import ipdb
+
+                ipdb.set_trace()
                 loss = criterion(imgs_pred, imgs)
                 epoch_loss += loss.item()
                 writer.add_scalar("Loss/train", loss.item(), global_step)
@@ -87,6 +88,7 @@ def train_net(
                 loss.backward()
                 nn.utils.clip_grad_value_(net.parameters(), 0.1)
                 optimizer.step()
+                scheduler.step(loss)
 
                 pbar.update(imgs.shape[0])
                 global_step += 1
