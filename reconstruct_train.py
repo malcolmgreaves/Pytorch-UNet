@@ -13,7 +13,7 @@ from eval import eval_net
 from unet import UNet
 
 from torch.utils.tensorboard import SummaryWriter
-from utils.dataset import BasicDataset
+from utils.dataset import BasicDataset, ReconstructDataset
 from torch.utils.data import DataLoader, random_split
 
 dir_img = "data/imgs/"
@@ -22,30 +22,19 @@ dir_checkpoint = "checkpoints/"
 
 
 def train_net(
-    net,
-    device,
-    epochs=5,
-    batch_size=1,
-    lr=0.001,
-    val_percent=0.1,
-    save_cp=True,
-    img_scale=0.5,
+    net: nn.Module,
+    device: torch.device,
+    epochs: int = 5,
+    batch_size: int = 1,
+    lr: float = 0.001,
+    save_cp: bool = True,
+    img_scale: float = 0.5,
 ):
 
-    dataset = BasicDataset(dir_img, dir_mask, img_scale)
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train, val = random_split(dataset, [n_train, n_val])
+    dataset = ReconstructDataset(dir_img, img_scale)
+    n_train = len(dataset)
     train_loader = DataLoader(
-        train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
-    )
-    val_loader = DataLoader(
-        val,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=8,
-        pin_memory=True,
-        drop_last=True,
+        dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
     )
 
     writer = SummaryWriter(comment=f"LR_{lr}_BS_{batch_size}_SCALE_{img_scale}")
@@ -57,21 +46,18 @@ def train_net(
         Batch size:      {batch_size}
         Learning rate:   {lr}
         Training size:   {n_train}
-        Validation size: {n_val}
         Checkpoints:     {save_cp}
         Device:          {device.type}
         Images scaling:  {img_scale}
     """
     )
 
-    optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    # optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    optimizer = optim.AdamW(net.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, "min" if net.n_classes > 1 else "max", patience=2
     )
-    if net.n_classes > 1:
-        criterion = nn.CrossEntropyLoss()
-    else:
-        criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.MSELoss()
 
     for epoch in range(epochs):
         net.train()
@@ -82,19 +68,16 @@ def train_net(
         ) as pbar:
             for batch in train_loader:
                 imgs = batch["image"]
-                true_masks = batch["mask"]
                 assert imgs.shape[1] == net.n_channels, (
                     f"Network has been defined with {net.n_channels} input channels, "
-                    f"but loaded images have {imgs.shape[1]} channels. Please check that "
-                    "the images are loaded correctly."
+                    f"but loaded images have {imgs.shape[1]} channels. "
+                    "Please check that the images are loaded correctly."
                 )
 
                 imgs = imgs.to(device=device, dtype=torch.float32)
-                mask_type = torch.float32 if net.n_classes == 1 else torch.long
-                true_masks = true_masks.to(device=device, dtype=mask_type)
 
-                masks_pred = net(imgs)
-                loss = criterion(masks_pred, true_masks)
+                imgs_pred = net(imgs)
+                loss = criterion(imgs_pred, imgs)
                 epoch_loss += loss.item()
                 writer.add_scalar("Loss/train", loss.item(), global_step)
 
@@ -107,34 +90,6 @@ def train_net(
 
                 pbar.update(imgs.shape[0])
                 global_step += 1
-                if global_step % (n_train // (10 * batch_size)) == 0:
-                    for tag, value in net.named_parameters():
-                        tag = tag.replace(".", "/")
-                        writer.add_histogram(
-                            "weights/" + tag, value.data.cpu().numpy(), global_step
-                        )
-                        writer.add_histogram(
-                            "grads/" + tag, value.grad.data.cpu().numpy(), global_step
-                        )
-                    val_score = eval_net(net, val_loader, device)
-                    scheduler.step(val_score)
-                    writer.add_scalar(
-                        "learning_rate", optimizer.param_groups[0]["lr"], global_step
-                    )
-
-                    if net.n_classes > 1:
-                        logging.info("Validation cross entropy: {}".format(val_score))
-                        writer.add_scalar("Loss/test", val_score, global_step)
-                    else:
-                        logging.info("Validation Dice Coeff: {}".format(val_score))
-                        writer.add_scalar("Dice/test", val_score, global_step)
-
-                    writer.add_images("images", imgs, global_step)
-                    if net.n_classes == 1:
-                        writer.add_images("masks/true", true_masks, global_step)
-                        writer.add_images(
-                            "masks/pred", torch.sigmoid(masks_pred) > 0.5, global_step
-                        )
 
         if save_cp:
             try:
@@ -142,8 +97,9 @@ def train_net(
                 logging.info("Created checkpoint directory")
             except OSError:
                 pass
-            torch.save(net.state_dict(), dir_checkpoint + f"CP_epoch{epoch + 1}.pth")
-            logging.info(f"Checkpoint {epoch + 1} saved !")
+            fname = f"{dir_checkpoint}CP_epoch{epoch + 1}.pth"
+            torch.save(net.state_dict(), fname)
+            logging.info(f"Checkpoint {epoch + 1} saved as {fname} !")
 
     writer.close()
 
@@ -210,7 +166,7 @@ def get_args():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def entrypoint():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = get_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -246,7 +202,6 @@ if __name__ == "__main__":
             lr=args.lr,
             device=device,
             img_scale=args.scale,
-            val_percent=args.val / 100,
         )
     except KeyboardInterrupt:
         torch.save(net.state_dict(), "INTERRUPTED.pth")
@@ -255,3 +210,7 @@ if __name__ == "__main__":
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+
+
+if __name__ == "__main__":
+    entrypoint()

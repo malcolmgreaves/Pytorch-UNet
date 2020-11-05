@@ -1,3 +1,5 @@
+.idea*
+runs*
 train_masks*
 *.pyc
 data/
