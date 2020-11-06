@@ -28,7 +28,9 @@ def train_net(
     img_scale: float = 0.5,
 ):
 
-    dataset = ReconstructDataset(embeding_dir, img_scale, device)
+    dataset = ReconstructDataset(
+        embeding_dir=embeding_dir, scale=img_scale, device=device
+    )
     n_train = len(dataset)
     train_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
@@ -115,6 +117,12 @@ def get_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
+        "--input-dir",
+        type=lambda s: Path(s).absolute(),
+        help="Input dir of images (nested structure)",
+        required=True,
+    )
+    parser.add_argument(
         "-e",
         "--epochs",
         metavar="E",
@@ -174,6 +182,12 @@ def get_args():
 def entrypoint():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = get_args()
+
+    if not args.input_dir.is_dir():
+        raise ValueError(
+            "Need to provide input directory via --input-dir (not file or nothing!)"
+        )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}")
 
@@ -201,6 +215,7 @@ def entrypoint():
 
     try:
         train_net(
+            embeding_dir=args.input_dir,
             net=net,
             epochs=args.epochs,
             batch_size=args.batchsize,

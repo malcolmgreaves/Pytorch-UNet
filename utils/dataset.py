@@ -128,7 +128,7 @@ class ReconstructDataset(Dataset):
         self.page_paths: Sequence[Path] = [
             page_dir
             for subtask_dir in subtask_directories(embeding_dir)
-            for page_dir in pages_of_subtask_documents(subtask_dir)
+            for page_dir in page_dirs(subtask_dir)
         ]
         logging.info(f"Creating dataset with {len(self)} examples")
         self.cache_in_memory = cache_in_memory
