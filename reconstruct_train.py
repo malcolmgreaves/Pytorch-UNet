@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import gc
 from pathlib import Path
 
 import torch
@@ -15,6 +16,34 @@ from unet import UNet
 from utils.dataset import ReconstructDataset
 
 dir_checkpoint = "checkpoints/"
+
+
+def refresh_cuda_memory() -> None:
+    """
+    Re-allocate all cuda memory to help alleviate fragmentation
+    From: https://github.com/pytorch/pytorch/issues/31252
+    """
+    # Run a full garbage collect first so any dangling tensors are released
+    gc.collect()
+
+    # Then move all tensors to the CPU
+    locations = {}
+    for obj in tqdm(gc.get_objects(), desc="Re-organizing tensors in GPU memory"):
+        if not isinstance(obj, torch.Tensor):
+            continue
+        locations[obj] = obj.device
+        obj.data = obj.data.cpu()
+        if isinstance(obj, torch.nn.Parameter) and obj.grad is not None:
+            obj.grad.data = obj.grad.cpu()
+
+    # Now empty the cache to flush the allocator
+    torch.cuda.empty_cache()
+
+    # Finally move the tensors back to their associated GPUs
+    for tensor, device in locations.items():
+        tensor.data = tensor.to(device)
+        if isinstance(tensor, torch.nn.Parameter) and tensor.grad is not None:
+            tensor.grad.data = tensor.grad.to(device)
 
 
 def train_net(
@@ -57,7 +86,7 @@ def train_net(
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=2)
     criterion = nn.MSELoss()
 
-    total_loss = 0
+    ooms = 0
     for epoch in range(epochs):
         net.train()
         epoch_loss = 0.0
@@ -74,26 +103,45 @@ def train_net(
                 )
                 count = min(n_train, count + batch_size)
 
-                imgs = imgs.to(device=device, dtype=torch.float32)
+                try:
+                    imgs = imgs.to(device=device, dtype=torch.float32)
 
-                imgs_pred = net(imgs)
-                loss = criterion(imgs_pred, imgs)
-                epoch_loss += loss.item()
-                writer.add_scalar("Loss/train", loss.item(), global_step)
+                    imgs_pred = net(imgs)
+                    loss = criterion(imgs_pred, imgs)
+                    epoch_loss += loss.item()
+                    writer.add_scalar("Loss/train", loss.item(), global_step)
 
-                pbar.set_postfix(
-                    **{"loss (batch)": loss.item(), "loss (epoch)": epoch_loss / count}
-                )
+                    pbar.set_postfix(
+                        **{
+                            "loss (batch)": loss.item(),
+                            "loss (epoch)": epoch_loss / count,
+                        }
+                    )
 
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_value_(net.parameters(), 0.1)
-                optimizer.step()
-                scheduler.step(loss)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    nn.utils.clip_grad_value_(net.parameters(), 0.1)
+                    optimizer.step()
 
-                pbar.update(imgs.shape[0])
-                global_step += 1
-                del batch
+                    pbar.update(imgs.shape[0])
+                    global_step += 1
+                except RuntimeError as e:
+                    if "out of memory" in str(e):
+                        print(
+                            "WARNING: attempting to recover from OOM in forward/backward pass",
+                            file=sys.stderr,
+                        )
+                        ooms += 1
+                        optimizer.zero_grad()
+                        del batch
+                        refresh_cuda_memory()
+                    else:
+                        raise e
+        avg_epoch_loss = epoch_loss / n_train
+        logging.info(
+            f"Epoch {epoch + 1} has average loss of {avg_epoch_loss} (sum: {epoch_loss})"
+        )
+        scheduler.step(epoch_loss)
 
         if save_cp:
             try:
@@ -104,10 +152,6 @@ def train_net(
             fname = f"{dir_checkpoint}CP_epoch{epoch + 1}.pth"
             torch.save(net.state_dict(), fname)
             logging.info(f"Checkpoint {epoch + 1} saved as {fname} !")
-        logging.info(
-            f"Epoch {epoch+1} has average loss of {epoch_loss / n_train} (sum: {epoch_loss})"
-        )
-        scheduler.step(epoch_loss)
 
     writer.close()
 
