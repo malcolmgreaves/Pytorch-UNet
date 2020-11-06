@@ -12,7 +12,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from unet import UNet
+from unet.unet_model import UNetReconstruct
 from utils.dataset import ReconstructDataset
 
 dir_checkpoint = "checkpoints/"
@@ -125,6 +125,7 @@ def train_net(
 
                     pbar.update(imgs.shape[0])
                     global_step += 1
+
                 except RuntimeError as e:
                     if "out of memory" in str(e):
                         print(
@@ -242,7 +243,7 @@ def entrypoint():
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    net = UNet(n_channels=3, n_classes=1, bilinear=True)
+    net = UNetReconstruct(n_channels=3, bilinear=True)
     logging.info(
         f"Network:\n"
         f"\t{net.n_channels} input channels\n"
