@@ -2,26 +2,23 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
-import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
 from tqdm import tqdm
-
-from eval import eval_net
-from unet import UNet
-
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from utils.dataset import BasicDataset, ReconstructDataset
-from torch.utils.data import DataLoader, random_split
 
-dir_img = "data/imgs/"
-dir_mask = "data/masks/"
+from unet import UNet
+from utils.dataset import ReconstructDataset
+
 dir_checkpoint = "checkpoints/"
 
 
 def train_net(
+    embeding_dir: Path,
     net: nn.Module,
     device: torch.device,
     epochs: int = 5,
@@ -31,7 +28,7 @@ def train_net(
     img_scale: float = 0.5,
 ):
 
-    dataset = ReconstructDataset(dir_img, img_scale)
+    dataset = ReconstructDataset(embeding_dir, img_scale, device)
     n_train = len(dataset)
     train_loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
@@ -42,13 +39,14 @@ def train_net(
 
     logging.info(
         f"""Starting training:
-        Epochs:          {epochs}
-        Batch size:      {batch_size}
-        Learning rate:   {lr}
-        Training size:   {n_train}
-        Checkpoints:     {save_cp}
-        Device:          {device.type}
-        Images scaling:  {img_scale}
+        Embeding dir w/ images: {embeding_dir}
+        Epochs:                 {epochs}
+        Batch size:             {batch_size}
+        Learning rate:          {lr}
+        Training size:          {n_train}
+        Checkpoints:            {save_cp}
+        Device:                 {device.type}
+        Images scaling:         {img_scale}
     """
     )
 
@@ -103,7 +101,9 @@ def train_net(
             fname = f"{dir_checkpoint}CP_epoch{epoch + 1}.pth"
             torch.save(net.state_dict(), fname)
             logging.info(f"Checkpoint {epoch + 1} saved as {fname} !")
-        logging.info(f"Epoch {epoch+1} has average loss of {epoch_loss / n_train} (sum: {epoch_loss})")
+        logging.info(
+            f"Epoch {epoch+1} has average loss of {epoch_loss / n_train} (sum: {epoch_loss})"
+        )
         scheduler.step(epoch_loss)
 
     writer.close()
