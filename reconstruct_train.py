@@ -93,6 +93,7 @@ def train_net(
 
                 pbar.update(imgs.shape[0])
                 global_step += 1
+                del batch
 
         if save_cp:
             try:

@@ -99,7 +99,7 @@ def page_dirs(subtask_dir: Path) -> Iterator[Path]:
         yield page_dir
 
 
-def load_page_images_from_dir(page_dir: Path, device: torch.device) -> Image:
+def load_page_image_from_dir(page_dir: Path, device: torch.device) -> Image:
     raw_dict_p = str(page_dir / "raw.dict")
     try:
         with open(raw_dict_p, "rb") as rb:
@@ -132,12 +132,9 @@ class ReconstructDataset(Dataset):
         ]
         logging.info(f"Creating dataset with {len(self)} examples")
         self.cache_in_memory = cache_in_memory
-        if self.cache_in_memory:
-            self._cache: List[Optional[Mapping[str, torch.FloatTensor]]] = [None] * len(
-                self
-            )
-        else:
-            self._cache = []
+        self._cache: List[Optional[Mapping[str, torch.FloatTensor]]] = (
+            [None] * len(self) if self.cache_in_memory else []
+        )
 
     def __len__(self):
         return len(self.page_paths)
@@ -146,7 +143,7 @@ class ReconstructDataset(Dataset):
     def preprocess(cls, pil_img, scale):
         w, h = pil_img.size
         newW, newH = int(scale * w), int(scale * h)
-        assert newW > 0 and newH > 0, "Scale is too small"
+        assert newW > 0 and newH > 0, f"Scale is too small: {newW=}, {newH=}"
         pil_img = pil_img.resize((newW, newH))
 
         img_nd = np.array(pil_img)
@@ -161,16 +158,23 @@ class ReconstructDataset(Dataset):
 
         return img_trans
 
-    def __getitem__(self, i) -> Mapping[str, torch.FloatTensor]:
-        """Loads image at the page directory corresponding to `i`.
+    def __getitem__(self, index: int) -> Mapping[str, torch.FloatTensor]:
+        """Loads image at the page directory corresponding to `index`, accessible under the "image" key.
+
+        If `self.cache_in_memory` is true, then all images are eventually cached in-memory as they're accessed.
         """
-        if self.cache_in_memory and self._cache[i] is not None:
-            return self._cache[i]
+        if self.cache_in_memory and self._cache[index] is not None:
+            return self._cache[index]
         else:
-            page_dir = self.page_paths[i]
-            img = load_page_images_from_dir(page_dir, device=self.device)
-            img = self.preprocess(img, self.scale)
-            data = {"image": torch.from_numpy(img).type(torch.FloatTensor)}
+            data = {"image": self.load_image_tensor(index)}
             if self.cache_in_memory:
-                self._cache[i] = data
+                self._cache[index] = data
             return data  # type: ignore
+
+    def load_image_tensor(self, index: int) -> torch.FloatTensor:
+        """Load the page image that corresponds to `index`.
+        """
+        page_dir = self.page_paths[index]
+        img = load_page_image_from_dir(page_dir, device=self.device)
+        img = self.preprocess(img, self.scale)
+        return img
