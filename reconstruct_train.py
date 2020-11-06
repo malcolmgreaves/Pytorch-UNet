@@ -246,8 +246,7 @@ def entrypoint():
     net = UNetReconstruct(n_channels=3, bilinear=True)
     logging.info(
         f"Network:\n"
-        f"\t{net.n_channels} input channels\n"
-        f"\t{net.n_classes} output channels (classes)\n"
+        f"\t{net.n_channels} channels\n"
         f'\t{"Bilinear" if net.bilinear else "Transposed conv"} upscaling'
     )
 
