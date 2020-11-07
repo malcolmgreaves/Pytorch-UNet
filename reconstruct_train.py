@@ -127,7 +127,7 @@ def train_net(
                     global_step += 1
 
                 except RuntimeError as e:
-                    if "out of memory" in str(e):
+                    if "cuda out of memory" in str(e).lower():
                         print(
                             "WARNING: attempting to recover from OOM in forward/backward pass",
                             file=sys.stderr,
