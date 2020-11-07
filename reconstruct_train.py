@@ -137,7 +137,7 @@ def train_net(
                         ooms += 1
                         optimizer.zero_grad()
                         del batch
-                        refresh_cuda_memory()
+                        refresh_cuda_memory(device)
                     else:
                         raise e
         avg_epoch_loss = epoch_loss / n_train
