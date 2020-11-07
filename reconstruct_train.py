@@ -18,7 +18,7 @@ from utils.dataset import ReconstructDataset
 dir_checkpoint = "checkpoints/"
 
 
-def refresh_cuda_memory() -> None:
+def refresh_cuda_memory(gpu_device: torch.device) -> None:
     """
     Re-allocate all cuda memory to help alleviate fragmentation
     From: https://github.com/pytorch/pytorch/issues/31252
@@ -26,24 +26,26 @@ def refresh_cuda_memory() -> None:
     # Run a full garbage collect first so any dangling tensors are released
     gc.collect()
 
+    cpu_device = torch.device("cpu")
+
+    objs_w_tensors = []
     # Then move all tensors to the CPU
-    locations = {}
     for obj in tqdm(gc.get_objects(), desc="Re-organizing tensors in GPU memory"):
         if not isinstance(obj, torch.Tensor):
             continue
-        locations[obj] = obj.device
-        obj.data = obj.data.cpu()
+        obj.data = obj.data.to(cpu_device)
         if isinstance(obj, torch.nn.Parameter) and obj.grad is not None:
-            obj.grad.data = obj.grad.cpu()
+            obj.grad = obj.grad.to(cpu_device)
+        objs_w_tensors.append(obj)
 
     # Now empty the cache to flush the allocator
     torch.cuda.empty_cache()
 
     # Finally move the tensors back to their associated GPUs
-    for tensor, device in locations.items():
-        tensor.data = tensor.to(device)
-        if isinstance(tensor, torch.nn.Parameter) and tensor.grad is not None:
-            tensor.grad.data = tensor.grad.to(device)
+    for obj in objs_w_tensors:
+        obj.data = obj.data.to(gpu_device)
+        if isinstance(obj, torch.nn.Parameter) and obj.grad is not None:
+            obj.grad = obj.grad.to(gpu_device)
 
 
 def train_net(
