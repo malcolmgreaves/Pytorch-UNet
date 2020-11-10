@@ -99,29 +99,40 @@ def page_dirs(subtask_dir: Path) -> Iterator[Path]:
         yield page_dir
 
 
-def load_page_image_from_dir(page_dir: Path, device: torch.device) -> Image:
+def load_page_image_from_dir(
+    is_grayscale: bool, device: torch.device, page_dir: Path
+) -> Image:
     raw_dict_p = str(page_dir / "raw.dict")
     try:
         with open(raw_dict_p, "rb") as rb:
             raw_dict: Mapping[str, Any] = torch.load(rb, map_location=device)
         page_t: torch.Tensor = raw_dict["page"]
-        return transforms.ToPILImage()(page_t)
+        return transforms.ToPILImage(mode="L" if is_grayscale else "RGB")(page_t)
 
     except Exception as e:
         raise IOError(f"Could not read page images from raw.dict ({raw_dict_p})", e)
+
+
+# def make_tiles(self.n_tiles, p)
 
 
 class ReconstructDataset(Dataset):
     def __init__(
         self,
         embeding_dir: Path,
+        device: torch.device,
         scale: float = 1.0,
         cache_in_memory: bool = False,
-        device: torch.device = torch.device("cpu"),
+        n_tiles: Optional[int] = None,
+        is_grayscale: bool = True,
     ) -> None:
         self.embeding_dir = embeding_dir
         self.scale = scale
         assert 0 < scale <= 1, "Scale must be between 0 and 1"
+        self.n_tiles = n_tiles
+        if self.n_tiles is not None and self.n_tiles <= 1:
+            raise ValueError(f"If provided, # tiles must be > 1, not {self.n_tiles}")
+        self.is_grayscale = is_grayscale
 
         self.subtask_dirs = list(subtask_directories(embeding_dir))
         self.device = device
@@ -130,6 +141,12 @@ class ReconstructDataset(Dataset):
             for subtask_dir in subtask_directories(embeding_dir)
             for page_dir in page_dirs(subtask_dir)
         ]
+        # self.index_to_img = []
+        # if self.n_tiles:
+        #     for i, p in enumerate(self.page_paths):
+        #         tiles_of_p = make_tiles(self.n_tiles, p)
+        #         for t in tiles_of_p:
+        #             self.index_to_img.append(t)
         logging.info(f"Creating dataset with {len(self)} examples")
         self.cache_in_memory = cache_in_memory
         self._cache: List[Optional[Mapping[str, torch.FloatTensor]]] = (
@@ -137,7 +154,8 @@ class ReconstructDataset(Dataset):
         )
 
     def __len__(self):
-        return len(self.page_paths)
+        n = len(self.page_paths)
+        return n * self.n_tiles if self.n_tiles else n
 
     @classmethod
     def preprocess(cls, pil_img, scale):
@@ -153,6 +171,7 @@ class ReconstructDataset(Dataset):
 
         # HWC to CHW
         img_trans = img_nd.transpose((2, 0, 1))
+        # normalize [0,255] to [0,1]
         if img_trans.max() > 1:  # type: ignore
             img_trans = img_trans / 255
 
@@ -175,6 +194,8 @@ class ReconstructDataset(Dataset):
         """Load the page image that corresponds to `index`.
         """
         page_dir = self.page_paths[index]
-        img = load_page_image_from_dir(page_dir, device=self.device)
+        img = load_page_image_from_dir(
+            is_grayscale=self.is_grayscale, device=self.device, page_dir=page_dir
+        )
         img = self.preprocess(img, self.scale)
         return img

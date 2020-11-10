@@ -88,6 +88,8 @@ def train_net(
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=2)
     criterion = nn.MSELoss()
 
+    # https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/
+    scaler = torch.cuda.amp.GradScaler()
     ooms = 0
     for epoch in range(epochs):
         net.train()
@@ -106,10 +108,12 @@ def train_net(
                 count = min(n_train, count + batch_size)
 
                 try:
-                    imgs = imgs.to(device=device, dtype=torch.float32)
+                    optimizer.zero_grad()
 
+                    imgs = imgs.to(device=device, dtype=torch.float32)
                     imgs_pred = net(imgs)
-                    loss = criterion(imgs_pred, imgs)
+                    with torch.cuda.amp.autocast():
+                        loss = criterion(imgs_pred, imgs)
                     epoch_loss += loss.item()
                     writer.add_scalar("Loss/train", loss.item(), global_step)
 
@@ -120,10 +124,11 @@ def train_net(
                         }
                     )
 
-                    optimizer.zero_grad()
-                    loss.backward()
+                    scaler.scale(loss).backward()  # loss.backward()
                     nn.utils.clip_grad_value_(net.parameters(), 0.1)
-                    optimizer.step()
+                    scaler.step(optimizer)  # optimizer.step()
+
+                    scaler.update()
 
                     pbar.update(imgs.shape[0])
                     global_step += 1
@@ -131,7 +136,7 @@ def train_net(
                 except RuntimeError as e:
                     if "cuda out of memory" in str(e).lower():
                         print(
-                            "WARNING: attempting to recover from OOM in forward/backward pass",
+                            f"WARNING: attempting to recover from OOM [#{ooms+1}] in forward/backward pass",
                             file=sys.stderr,
                         )
                         ooms += 1
@@ -155,7 +160,8 @@ def train_net(
             fname = f"{dir_checkpoint}CP_epoch{epoch + 1}.pth"
             torch.save(net.state_dict(), fname)
             logging.info(f"Checkpoint {epoch + 1} saved as {fname} !")
-
+        if ooms > 0:
+            print(f"{ooms} CUDA out-of-memory errors encountered")
     writer.close()
 
 
@@ -245,7 +251,7 @@ def entrypoint():
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    net = UNetReconstruct(n_channels=3, bilinear=True)
+    net = UNetReconstruct(n_channels=1, bilinear=True)
     logging.info(
         f"Network:\n"
         f"\t{net.n_channels} channels\n"
