@@ -60,7 +60,10 @@ def train_net(
 ):
 
     dataset = ReconstructDataset(
-        embeding_dir=embeding_dir, scale=img_scale, device=device
+        embeding_dir=embeding_dir,
+        scale=img_scale,
+        device=device,
+        is_grayscale=True,
     )
     n_train = len(dataset)
     train_loader = DataLoader(
