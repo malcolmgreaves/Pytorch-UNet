@@ -60,10 +60,7 @@ def train_net(
 ):
 
     dataset = ReconstructDataset(
-        embeding_dir=embeding_dir,
-        scale=img_scale,
-        device=device,
-        is_grayscale=True,
+        embeding_dir=embeding_dir, scale=img_scale, device=device, is_grayscale=True,
     )
     n_train = len(dataset)
     train_loader = DataLoader(
@@ -115,8 +112,8 @@ def train_net(
 
                     imgs = imgs.to(device=device, dtype=torch.float32)
                     imgs_pred = net(imgs)
-                    with torch.cuda.amp.autocast():
-                        loss = criterion(imgs_pred, imgs)
+                    # with torch.cuda.amp.autocast(): # 1.6.1+ only :*(
+                    loss = criterion(imgs_pred, imgs)
                     epoch_loss += loss.item()
                     writer.add_scalar("Loss/train", loss.item(), global_step)
 

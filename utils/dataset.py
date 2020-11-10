@@ -107,10 +107,11 @@ def load_page_image_from_dir(
         with open(raw_dict_p, "rb") as rb:
             raw_dict: Mapping[str, Any] = torch.load(rb, map_location=device)
         page_t: torch.Tensor = raw_dict["page"]
-        return transforms.ToPILImage(mode="L" if is_grayscale else "RGB")(page_t)
-
     except Exception as e:
         raise IOError(f"Could not read page images from raw.dict ({raw_dict_p})", e)
+
+    image = transforms.ToPILImage()(page_t)
+    return image.convert("L") if is_grayscale else image
 
 
 # def make_tiles(self.n_tiles, p)
