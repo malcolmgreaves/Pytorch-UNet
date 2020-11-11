@@ -57,7 +57,8 @@ class UNetReconstruct(nn.Module):
         self.up2 = Up(512, 256 // factor, bilinear)
         self.up3 = Up(256, 128 // factor, bilinear)
         if self.skip_top_residual:
-            self.up4 = UpNoResidual(64, 64)
+            # self.up4 = UpNoResidual(64, 64)
+            self.up4 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         else:
             self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_channels)
