@@ -68,6 +68,29 @@ class Up(nn.Module):
         return self.conv(x)
 
 
+class UpNoResidual(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
+        super().__init__()
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.conv = nn.Sequential(
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=1,
+                padding=1,
+                stride=1,
+                dilation=1,
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x1: torch.tensor) -> torch.tensor:
+        x1_up_sampled = self.up(x1)
+        x1_1d_conv = self.conv(x1_up_sampled)
+        return x1_1d_conv
+
+
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()

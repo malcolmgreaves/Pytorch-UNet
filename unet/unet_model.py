@@ -39,11 +39,14 @@ class UNet(nn.Module):
 
 
 class UNetReconstruct(nn.Module):
-    def __init__(self, n_channels, bilinear=True) -> None:
+    def __init__(
+        self, n_channels: int, bilinear: bool = True, skip_top_residual: bool = False
+    ) -> None:
         super(UNetReconstruct, self).__init__()
         self.n_channels = n_channels
         self.bilinear = bilinear
         factor = 2 if bilinear else 1
+        self.skip_top_residual = skip_top_residual
 
         self.inc = DoubleConv(n_channels, 64)
         self.down1 = Down(64, 128)
@@ -53,7 +56,10 @@ class UNetReconstruct(nn.Module):
         self.up1 = Up(1024, 512 // factor, bilinear)
         self.up2 = Up(512, 256 // factor, bilinear)
         self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
+        if self.skip_top_residual:
+            self.up4 = UpNoResidual(64, 64)
+        else:
+            self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_channels)
 
     def forward(self, x):
@@ -65,6 +71,9 @@ class UNetReconstruct(nn.Module):
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
-        x = self.up4(x, x1)
+        if self.skip_top_residual:
+            x = self.up4(x)
+        else:
+            x = self.up4(x, x1)
         img = self.outc(x)
         return img
