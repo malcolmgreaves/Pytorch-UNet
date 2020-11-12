@@ -11,6 +11,7 @@ from torch import optim
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 
 from unet.unet_model import UNetReconstruct
 from utils.dataset import ReconstructDataset
@@ -60,7 +61,10 @@ def train_net(
 ):
 
     dataset = ReconstructDataset(
-        embeding_dir=embeding_dir, scale=img_scale, device=device, is_grayscale=True,
+        embeding_dir=embeding_dir,
+        scale=img_scale,
+        device=device,
+        is_grayscale=True,
     )
     n_train = len(dataset)
     train_loader = DataLoader(
@@ -263,6 +267,7 @@ def entrypoint():
         logging.info(f"Model loaded from {args.load}")
 
     net.to(device=device)
+    summary(net, input_size=_input_size(args, device))
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
@@ -283,6 +288,26 @@ def entrypoint():
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+
+
+def _input_size(args, device):
+    _input_size = next(
+        iter(
+            DataLoader(
+                dataset=ReconstructDataset(
+                    embeding_dir=args.input_dir,
+                    scale=args.scale,
+                    device=device,
+                    is_grayscale=True,
+                ),
+                batch_size=args.batchsize,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=False,
+            )
+        )
+    )["image"].shape[1:]
+    return _input_size
 
 
 if __name__ == "__main__":

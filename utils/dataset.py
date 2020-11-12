@@ -192,8 +192,7 @@ class ReconstructDataset(Dataset):
             return data  # type: ignore
 
     def load_image_tensor(self, index: int) -> torch.FloatTensor:
-        """Load the page image that corresponds to `index`.
-        """
+        """Load the page image that corresponds to `index`."""
         page_dir = self.page_paths[index]
         img = load_page_image_from_dir(
             is_grayscale=self.is_grayscale, device=self.device, page_dir=page_dir
