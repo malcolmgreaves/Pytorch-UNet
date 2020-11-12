@@ -68,7 +68,7 @@ def train_net(
     )
     n_train = len(dataset)
     train_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
+        dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=False
     )
 
     writer = SummaryWriter(comment=f"LR_{lr}_BS_{batch_size}_SCALE_{img_scale}")
