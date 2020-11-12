@@ -181,6 +181,12 @@ def get_args():
         required=True,
     )
     parser.add_argument(
+        "--skip-top-residual",
+        action="store_true",
+        help="If present, skips the top-level skip connection. Otherwise is a vanilla U-Net",
+        required=False,
+    )
+    parser.add_argument(
         "-e",
         "--epochs",
         metavar="E",
@@ -255,7 +261,11 @@ def entrypoint():
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    net = UNetReconstruct(n_channels=1, bilinear=True, skip_top_residual=True)
+    net = UNetReconstruct(
+        n_channels=1,
+        bilinear=True,
+        skip_top_residual=args.skip_top_residual,
+    )
     logging.info(
         f"Network:\n"
         f"\t{net.n_channels} channels\n"
